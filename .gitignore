@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment secrets — MAI committare secrets reali
+.env.local
+.env.secret
+*.secret
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary
+*.tmp
+*.temp
+
+# NOTE: docker/nginx/conf.d/active.conf e active_env sono TRACCIATI intenzionalmente.
+# Rappresentano lo stato iniziale (blue) e vengono aggiornati a runtime dagli script.
+# Non escluderli: servono come state iniziale al primo deploy.

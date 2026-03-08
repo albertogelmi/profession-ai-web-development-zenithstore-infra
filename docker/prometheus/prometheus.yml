@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - 'alert.rules.yml'
+
+scrape_configs:
+  # Backend stack Blue
+  - job_name: 'zenithstore-backend-blue'
+    static_configs:
+      - targets: ['be-blue:3000']
+    metrics_path: '/metrics'
+
+  # Backend stack Green (idle — Prometheus scrapa sempre entrambi,
+  # così si ha visibilità anche sullo stack non attivo durante il deploy)
+  - job_name: 'zenithstore-backend-green'
+    static_configs:
+      - targets: ['be-green:3000']
+    metrics_path: '/metrics'
+
+  # Self-monitoring Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

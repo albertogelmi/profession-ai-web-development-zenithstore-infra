@@ -1,0 +1,46 @@
+# alertmanager.yml — Configurazione Alertmanager
+# ⚠️  Sostituire i valori SMTP con quelli reali prima del deploy.
+#     SMTP_PASSWORD viene iniettato come variabile d'ambiente da Jenkins
+#     o da Alertmanager al boot (non committare mai la password reale).
+#
+# Avvio con password SMTP:
+#   SMTP_PASSWORD=xxx docker compose -f docker/compose.monitoring.yml up -d
+
+global:
+  smtp_smarthost:      'smtp.example.com:587'
+  smtp_from:           'alertmanager@zenithstore.com'
+  smtp_auth_username:  'alertmanager@zenithstore.com'
+  smtp_auth_password:  '${SMTP_PASSWORD}'
+  smtp_require_tls:    true
+  # Timeout globale per i receiver
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity', 'job']
+  group_wait:      30s    # attendi prima di inviare il primo alert del gruppo
+  group_interval:  5m     # attendi prima di inviare un nuovo alert per lo stesso gruppo
+  repeat_interval: 12h    # re-invia se l'alert è ancora attivo dopo N ore
+  receiver: 'team-email'
+
+  # Route separata per i critical: nessuna attesa, immediato
+  routes:
+    - match:
+        severity: critical
+      group_wait: 0s
+      receiver: 'team-email'
+
+receivers:
+  - name: 'team-email'
+    email_configs:
+      - to: 'team@zenithstore.com'
+        send_resolved: true
+        headers:
+          Subject: '[ZenithStore {{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+
+inhibit_rules:
+  # Sopprime i warning se c'è già un critical per lo stesso alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'job']
