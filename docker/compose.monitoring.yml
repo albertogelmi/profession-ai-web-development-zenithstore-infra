@@ -20,10 +20,18 @@ services:
     ports:
       - "8080:8080"
       - "50000:50000"   # JNLP agent port
+    environment:
+      # Path del volume nginx-conf montato in questo container.
+      # Usato da switch-blue-green.sh e rollback.sh per aggiornare active.conf
+      # senza dipendere da path host.
+      NGINX_CONF_DIR: /nginx-conf
     volumes:
       - jenkins_home:/var/jenkins_home
       # Monta il Docker named pipe di Windows per consentire docker commands dall'interno
       - //./pipe/docker_engine://./pipe/docker_engine
+      # Volume condiviso con Nginx: Jenkins scrive in /nginx-conf/active.conf,
+      # Nginx lo legge da /etc/nginx/conf.d/active.conf (stesso volume)
+      - zenithstore-nginx-conf:/nginx-conf
     restart: unless-stopped
 
   prometheus:
@@ -84,3 +92,6 @@ volumes:
   jenkins_home:
   prometheus_data:
   grafana_data:
+  zenithstore-nginx-conf:
+    external: true
+    name: zenithstore-nginx-conf

@@ -29,6 +29,10 @@ pipeline {
         BE_IMAGE = 'zenithstore-backend'
         FE_IMAGE = 'zenithstore-frontend'
         // COMMIT_SHA viene impostato dinamicamente nello stage Checkout (env.COMMIT_SHA)
+        // Path del volume zenithstore-nginx-conf montato in questo container Jenkins.
+        // Usato da switch-blue-green.sh e rollback.sh per aggiornare active.conf
+        // senza dipendere da path host (vedi compose.monitoring.yml).
+        NGINX_CONF_DIR = '/nginx-conf'
     }
 
     stages {

@@ -68,22 +68,31 @@ cd ../profession-ai-web-development-zenithstore-infra
 # 4. Build dell'immagine Jenkins custom (una tantum)
 docker build -t jenkins-custom -f Dockerfile.jenkins .
 
-# 5. Avvia monitoring stack (Jenkins, Prometheus, Grafana, Alertmanager)
+# 5. Crea e popola il volume condiviso Nginx ↔ Jenkins (una tantum)
+#    Questo volume contiene i conf file Nginx e viene aggiornato
+#    da Jenkins a ogni deploy (switch Blue-Green).
+docker volume create zenithstore-nginx-conf
+docker run --rm \
+    -v "${PWD}/docker/nginx/conf.d:/src:ro" \
+    -v zenithstore-nginx-conf:/dest \
+    alpine sh -c "cp /src/* /dest/"
+
+# 6. Avvia monitoring stack (Jenkins, Prometheus, Grafana, Alertmanager)
 docker compose -f docker/compose.monitoring.yml up -d
 
-# 6. Configura Jenkins: vedi §3
+# 7. Configura Jenkins: vedi §3
 
-# 7. Build iniziale delle immagini app (prima volta, manualmente)
+# 8. Build iniziale delle immagini app (prima volta, manualmente)
 docker build -t zenithstore-backend:latest ../profession-ai-web-development-zenithstore-app/backend/
 docker build -t zenithstore-frontend:latest \
     --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
     --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
     ../profession-ai-web-development-zenithstore-app/frontend/
 
-# 8. Avvia Nginx
+# 9. Avvia Nginx
 docker compose -f docker/compose.nginx.yml up -d
 
-# 9. Primo deploy manuale dello stack Blue (stack iniziale)
+# 10. Primo deploy manuale dello stack Blue (stack iniziale)
 export IMAGE_TAG=latest
 export JWT_SECRET="<valore>"
 export DB_PASSWORD="<valore>"
@@ -91,9 +100,8 @@ export MONGO_PASSWORD="<valore>"
 export NEXTAUTH_SECRET="<valore>"
 docker compose -f docker/compose.blue.yml up -d
 
-# 10. Verifica
+# 11. Verifica
 curl http://localhost/health          # backend via Nginx
-curl http://localhost/api/health      # frontend via Nginx
 ```
 
 ### 2.3 Configurazione Jenkins

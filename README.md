@@ -88,13 +88,21 @@ docker compose up -d
 # 2. Build immagine Jenkins custom (una tantum)
 docker build -t jenkins-custom -f Dockerfile.jenkins .
 
-# 3. Monitoring stack (Jenkins + Prometheus + Grafana + Alertmanager)
+# 3. Crea e popola il volume condiviso Nginx ↔ Jenkins (una tantum)
+#    Jenkins scrive active.conf in questo volume; Nginx lo legge.
+docker volume create zenithstore-nginx-conf
+docker run --rm \
+    -v "${PWD}/docker/nginx/conf.d:/src:ro" \
+    -v zenithstore-nginx-conf:/dest \
+    alpine sh -c "cp /src/* /dest/"
+
+# 4. Monitoring stack (Jenkins + Prometheus + Grafana + Alertmanager)
 docker compose -f docker/compose.monitoring.yml up -d
 
-# 4. Nginx
+# 5. Nginx
 docker compose -f docker/compose.nginx.yml up -d
 
-# 5. Primo deploy manuale stack Blue
+# 6. Primo deploy manuale stack Blue
 export IMAGE_TAG=latest JWT_SECRET=... DB_PASSWORD=... MONGO_PASSWORD=... NEXTAUTH_SECRET=...
 docker compose -f docker/compose.blue.yml up -d
 ```

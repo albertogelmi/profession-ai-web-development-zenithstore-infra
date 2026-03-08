@@ -20,7 +20,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
-CONF_DIR="${INFRA_DIR}/docker/nginx/conf.d"
+# NGINX_CONF_DIR è iniettato da Jenkins come variabile d'ambiente (valore: /nginx-conf).
+# In esecuzione manuale dall'host cade sul path locale del repo.
+CONF_DIR="${NGINX_CONF_DIR:-${INFRA_DIR}/docker/nginx/conf.d}"
 COMPOSE_DIR="${INFRA_DIR}/docker"
 
 if [ ! -f "${CONF_DIR}/active_env" ]; then
