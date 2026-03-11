@@ -91,7 +91,15 @@ docker build -t jenkins-custom -f Dockerfile.jenkins .
 # 3. Crea e popola il volume condiviso Nginx ↔ Jenkins (una tantum)
 #    Jenkins scrive active.conf in questo volume; Nginx lo legge.
 docker volume create zenithstore-nginx-conf
+
+# Linux / macOS:
 docker run --rm \
+    -v "${PWD}/docker/nginx/conf.d:/src:ro" \
+    -v zenithstore-nginx-conf:/dest \
+    alpine sh -c "cp /src/* /dest/"
+
+# Windows (Git Bash / MINGW64):
+MSYS_NO_PATHCONV=1 docker run --rm \
     -v "${PWD}/docker/nginx/conf.d:/src:ro" \
     -v zenithstore-nginx-conf:/dest \
     alpine sh -c "cp /src/* /dest/"
@@ -102,15 +110,24 @@ docker compose -f docker/compose.monitoring.yml up -d
 # 5. Nginx
 docker compose -f docker/compose.nginx.yml up -d
 
-# 6. Primo deploy manuale stack Blue
-export IMAGE_TAG=latest JWT_SECRET=... DB_PASSWORD=... MONGO_PASSWORD=... NEXTAUTH_SECRET=...
+# 6. Build immagini Docker BE e FE (una tantum - dal repo app)
+docker build \
+    -t zenithstore-backend:latest \
+    ./backend/
+
+docker build \
+    -t zenithstore-frontend:latest \
+    ./frontend/
+
+# 7. Primo deploy manuale stack Blue
+export IMAGE_TAG=latest DB_PASSWORD=rootpassword MONGO_PASSWORD=adminpassword JWT_SECRET=your-super-secret-jwt-key-change-this-in-production NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
 docker compose -f docker/compose.blue.yml up -d
 ```
 
 ### Deploy manuale (emergenza)
 
 ```bash
-export IMAGE_TAG=<commit-sha> JWT_SECRET=... DB_PASSWORD=... MONGO_PASSWORD=... NEXTAUTH_SECRET=...
+export IMAGE_TAG=<commit-sha> DB_PASSWORD=rootpassword MONGO_PASSWORD=adminpassword JWT_SECRET=your-super-secret-jwt-key-change-this-in-production NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
 bash scripts/switch-blue-green.sh deploy $IMAGE_TAG staging
 ```
 
@@ -162,7 +179,7 @@ docker restart be-blue
 ```bash
 # Re-deploy forzato dello stack attivo
 ACTIVE=$(cat docker/nginx/conf.d/active_env)
-export IMAGE_TAG=latest JWT_SECRET=... DB_PASSWORD=... MONGO_PASSWORD=... NEXTAUTH_SECRET=...
+export IMAGE_TAG=latest DB_PASSWORD=rootpassword MONGO_PASSWORD=adminpassword JWT_SECRET=your-super-secret-jwt-key-change-this-in-production NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
 docker compose -f "docker/compose.${ACTIVE}.yml" down
 docker compose -f "docker/compose.${ACTIVE}.yml" up -d
 ```
