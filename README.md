@@ -115,8 +115,15 @@ docker build \
     -t zenithstore-backend:latest \
     ./backend/
 
+# Le variabili NEXT_PUBLIC_* sono baked nel bundle client al build time.
+# Passarle sempre come --build-arg; i valori nel Dockerfile sono solo fallback locali.
+# NEXT_PUBLIC_MOCK_PAYMENT=true abilita il pulsante 'Simula Pagamento' nel checkout
+#   (impostare a false solo in caso di integrazione con un payment provider reale).
 docker build \
     -t zenithstore-frontend:latest \
+    --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
+    --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
+    --build-arg NEXT_PUBLIC_MOCK_PAYMENT=true \
     ./frontend/
 
 # 7. Primo deploy manuale stack Blue

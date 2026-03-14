@@ -83,10 +83,16 @@ docker compose -f docker/compose.monitoring.yml up -d
 # 7. Configura Jenkins: vedi §3
 
 # 8. Build iniziale delle immagini app (prima volta, manualmente)
+#    Le variabili NEXT_PUBLIC_* sono baked nel bundle client al build time (non
+#    modificabili a runtime via compose). Passare sempre i valori corretti via
+#    --build-arg; i default nel Dockerfile sono fallback solo per build locali.
+#    NEXT_PUBLIC_MOCK_PAYMENT=true abilita il pulsante 'Simula Pagamento' nel
+#    checkout (impostare a false solo con un payment provider reale integrato).
 docker build -t zenithstore-backend:latest ../profession-ai-web-development-zenithstore-app/backend/
 docker build -t zenithstore-frontend:latest \
     --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
     --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
+    --build-arg NEXT_PUBLIC_MOCK_PAYMENT=true \
     ../profession-ai-web-development-zenithstore-app/frontend/
 
 # 9. Avvia Nginx

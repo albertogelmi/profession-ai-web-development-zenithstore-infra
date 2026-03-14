@@ -131,29 +131,25 @@ pipeline {
         // ── 4. DOCKER BUILD & TAG ─────────────────────────────────────────────
         stage('Docker Build') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'jwt-secret',      variable: 'JWT_SECRET'),
-                    string(credentialsId: 'db-password',     variable: 'DB_PASSWORD'),
-                    string(credentialsId: 'mongo-password',  variable: 'MONGO_PASSWORD'),
-                    string(credentialsId: 'nextauth-secret', variable: 'NEXTAUTH_SECRET'),
-                ]) {
-                    sh """
-                        # Backend
-                        docker build \
-                            -t ${BE_IMAGE}:${env.COMMIT_SHA} \
-                            -t ${BE_IMAGE}:latest \
-                            app/backend/
+                sh """
+                    # Backend
+                    docker build \
+                        -t ${BE_IMAGE}:${env.COMMIT_SHA} \
+                        -t ${BE_IMAGE}:latest \
+                        app/backend/
 
-                        # Frontend — NEXT_PUBLIC_WS_URL punta a Nginx (:80) per il client browser.
-                        # NEXT_PUBLIC_BACKEND_URL viene sovrascritto a runtime dal compose per il proxy server-side.
-                        docker build \
-                            -t ${FE_IMAGE}:${env.COMMIT_SHA} \
-                            -t ${FE_IMAGE}:latest \
-                            --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
-                            --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
-                            app/frontend/
-                    """
-                }
+                    # Frontend — NEXT_PUBLIC_* vars sono baked nel bundle client al momento della build.
+                    # NEXT_PUBLIC_BACKEND_URL viene anche sovrascritto a runtime dal compose per il proxy server-side.
+                    # NEXT_PUBLIC_MOCK_PAYMENT=true abilita il pulsante 'Simula Pagamento' nel checkout
+                    #   (il sistema di pagamento è sempre mock; impostare a false solo in caso di integrazione reale).
+                    docker build \
+                        -t ${FE_IMAGE}:${env.COMMIT_SHA} \
+                        -t ${FE_IMAGE}:latest \
+                        --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
+                        --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
+                        --build-arg NEXT_PUBLIC_MOCK_PAYMENT=true \
+                        app/frontend/
+                """
             }
         }
 

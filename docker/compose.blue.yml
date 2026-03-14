@@ -15,7 +15,6 @@ services:
     ports:
       - "3000:3000"   # host:container — porta host usata da Nginx e da healthcheck.sh
     environment:
-      NODE_ENV: production
       PORT: "3000"
       # ─── MySQL ───────────────────────────────────────
       DB_HOST: mysql
@@ -60,7 +59,6 @@ services:
     ports:
       - "3001:3001"   # host:container
     environment:
-      NODE_ENV: production
       # ─── NextAuth ────────────────────────────────────
       NEXTAUTH_URL: "http://localhost:3001"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
@@ -68,7 +66,6 @@ services:
       # ─── Backend API ─────────────────────────────────
       BACKEND_INTERNAL_URL: "http://be-blue:3000"
       NEXT_PUBLIC_BACKEND_URL: "http://localhost"
-      NEXT_PUBLIC_WS_URL: "ws://localhost"
       AUTH_TRUST_HOST: "true"
       # ─── JWT ─────────────────────────────────────────
       JWT_SECRET: ${JWT_SECRET}
