@@ -24,6 +24,6 @@ Thumbs.db
 *.tmp
 *.temp
 
-# NOTE: docker/nginx/conf.d/active.conf e active_env sono TRACCIATI intenzionalmente.
-# Rappresentano lo stato iniziale (blue) e vengono aggiornati a runtime dagli script.
-# Non escluderli: servono come state iniziale al primo deploy.
+# Build
+docker/nginx/conf.d/active.conf
+docker/nginx/conf.d/active_env

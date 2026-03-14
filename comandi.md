@@ -52,7 +52,13 @@ docker build -t jenkins-custom -f Dockerfile.jenkins .
 # Nginx lo legge e instrada il traffico di conseguenza.
 docker volume create zenithstore-nginx-conf
 
-# 6. Popola il volume con le configurazioni iniziali
+# 6. Genera i file di stato iniziali (active.conf e active_env)
+# Vanno creati manualmente prima del primo deploy,
+# impostando blue come stack di partenza (coerente con il passo 9).
+cp docker/nginx/conf.d/blue.conf docker/nginx/conf.d/active.conf
+echo "blue" > docker/nginx/conf.d/active_env
+
+# 7. Popola il volume condiviso Nginx <-> Jenkins con le configurazioni iniziali
 # Copia blue.conf, green.conf, active.conf e active_env nel volume appena creato.
 # Senza questo step Nginx non sa a quale upstream puntare al primo avvio.
 
@@ -68,19 +74,19 @@ MSYS_NO_PATHCONV=1 docker run --rm \
     -v zenithstore-nginx-conf:/dest \
     alpine sh -c "cp /src/* /dest/"
 
-# 7. Monitoring stack
+# 8. Monitoring stack
 # Avvia Jenkins, Prometheus, Grafana e Alertmanager.
 # Jenkins è raggiungibile su http://localhost:8080 (completare il wizard al primo accesso).
 # Prometheus scrape le metriche del backend ogni 15s; Grafana le espone su :3100.
 docker compose -f docker/compose.monitoring.yml up -d
 
-# 8. Nginx reverse proxy
+# 9. Nginx reverse proxy
 # Avvia Nginx sulla porta 80. Tutto il traffico esterno (browser, curl) passa da qui.
 # Nginx legge active.conf dal volume condiviso per sapere a quale stack
 # (blue su :3000/:3001, green su :3010/:3011) girare le richieste.
 docker compose -f docker/compose.nginx.yml up -d
 
-# 9. Primo deploy stack Blue
+# 10. Primo deploy stack Blue
 # Imposta le variabili sensibili ed avvia i container be-blue e fe-blue.
 # IMAGE_TAG=latest usa le immagini compilate ai punti 2 e 3.
 # ATTENZIONE: in produzione sostituire i valori placeholder con segreti robusti.
@@ -91,15 +97,20 @@ export IMAGE_TAG=latest \
        NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
 docker compose -f docker/compose.blue.yml up -d
 
-# 10. Verifica stato container
+# 11. Verifica stato container
 # Controlla che be-blue e fe-blue siano in stato "Up".
 docker ps --filter "name=be-blue" --filter "name=fe-blue"
 
-# 11. Health check applicativo
+# 12. Health check applicativo
 # Esegue una serie di curl verso le endpoint /health di backend e frontend dello stack blue,
 # con retry automatico. Restituisce exit 0 se tutto risponde, exit 1 altrimenti.
 bash scripts/healthcheck.sh blue
 ```
+
+> **Punto di accesso all'applicazione:** usa sempre **`http://localhost`** (porta 80, Nginx).
+> Non usare le porte dirette dei container (`localhost:3001` per blue, `localhost:3011` per green):
+> quelle sono esposte solo per health check e debug. Nginx instrada automaticamente al
+> quale stack è attivo, quindi l'URL rimane invariato ad ogni switch.
 
 ---
 
@@ -299,6 +310,10 @@ export IMAGE_TAG=latest \
 # Il terzo argomento ("production") è una label descrittiva nei log; non cambia il comportamento.
 bash scripts/switch-blue-green.sh deploy latest production
 ```
+
+> **Punto di accesso all'applicazione:** dopo lo switch continua a usare **`http://localhost`** (porta 80).
+> Nginx ha aggiornato `active.conf` e punta già al nuovo stack — non è necessario cambiare URL.
+> Le porte dirette (`3000`/`3001` per blue, `3010`/`3011` per green) sono utili solo per debug diretto.
 
 ## Rollback durante la finestra di 5 minuti
 
