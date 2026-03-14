@@ -65,7 +65,7 @@ services:
       - "3011:3001"   # host 3011 → container 3001
     environment:
       # ─── NextAuth ────────────────────────────────────
-      NEXTAUTH_URL: "http://localhost:3011"
+      NEXTAUTH_URL: "http://localhost"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_SESSION_MAX_AGE_HOURS: "9"
       # ─── Backend API ─────────────────────────────────
