@@ -131,6 +131,23 @@ export IMAGE_TAG=latest DB_PASSWORD=rootpassword MONGO_PASSWORD=adminpassword JW
 docker compose -f docker/compose.blue.yml up -d
 ```
 
+### Redeploy forzato di uno stack (es. per ritestare una fix)
+
+```bash
+# Abbatti e riavvia lo stack blue con l'immagine corrente
+export IMAGE_TAG=latest DB_PASSWORD=rootpassword MONGO_PASSWORD=adminpassword JWT_SECRET=your-super-secret-jwt-key-change-this-in-production NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
+docker compose -f docker/compose.blue.yml down
+docker compose -f docker/compose.blue.yml up -d
+
+# Verifica che i container siano tornati up
+docker ps --filter "name=be-blue" --filter "name=fe-blue"
+
+# Health check manuale
+bash scripts/healthcheck.sh blue
+```
+
+> Se vuoi ritestare il green, sostituisci `blue` con `green` nei comandi sopra.
+
 ### Deploy manuale (emergenza)
 
 ```bash
