@@ -1,15 +1,15 @@
 # alertmanager.yml — Configurazione Alertmanager
-# ⚠️  Sostituire i valori SMTP con quelli reali prima del deploy.
-#     SMTP_PASSWORD viene iniettato come variabile d'ambiente da Jenkins
-#     o da Alertmanager al boot (non committare mai la password reale).
+# Tutte le impostazioni sensibili e specifiche dell'ambiente vengono lette
+# da variabili d'ambiente, iniettate da Docker Compose (compose.monitoring.yml)
+# che a sua volta le legge dal file .env nella root del repo infra.
 #
-# Avvio con password SMTP:
-#   SMTP_PASSWORD=xxx docker compose -f docker/compose.monitoring.yml up -d
+# L'espansione è abilitata dal flag --config.expand-env nel compose.monitoring.yml.
+# Questo flag è disponibile da Alertmanager >= 0.25.0.
 
 global:
-  smtp_smarthost:      'smtp.example.com:587'
-  smtp_from:           'alertmanager@zenithstore.com'
-  smtp_auth_username:  'alertmanager@zenithstore.com'
+  smtp_smarthost:      '${SMTP_HOST}'
+  smtp_from:           '${SMTP_FROM}'
+  smtp_auth_username:  '${SMTP_USERNAME}'
   smtp_auth_password:  '${SMTP_PASSWORD}'
   smtp_require_tls:    true
   # Timeout globale per i receiver
@@ -32,7 +32,7 @@ route:
 receivers:
   - name: 'team-email'
     email_configs:
-      - to: 'team@zenithstore.com'
+      - to: '${ALERT_EMAIL_TO}'
         send_resolved: true
         headers:
           Subject: '[ZenithStore {{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'

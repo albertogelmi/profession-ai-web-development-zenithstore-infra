@@ -14,9 +14,15 @@
 //   nextauth-secret  — NEXTAUTH_SECRET per NextAuth.js
 //   email-password   — Password SMTP per le notifiche Jenkins
 //
+// Jenkins Global properties richieste (Manage Jenkins → Configure System → Global properties):
+//   APP_REPO               — URL del repository app (es. https://github.com/org/zenithstore-app.git)
+//   NOTIFICATION_EMAIL     — Indirizzo email per notifiche build (es. team@zenithstore.com)
+//   NEXT_PUBLIC_BACKEND_URL — URL pubblico del backend (es. https://zenithstore.com)
+//   NEXT_PUBLIC_WS_URL      — URL WebSocket pubblico    (es. wss://zenithstore.com)
+//   NEXT_PUBLIC_MOCK_PAYMENT — "true" o "false"         (default: "true")
+//
 // ⚠️  REMINDER — DA RIVEDERE PRIMA DELLA PRIMA ESECUZIONE:
-//   - Aggiornare APP_REPO con l'URL reale del repository app
-//   - Verificare gli indirizzi email nel blocco post {}
+//   - Impostare APP_REPO e NOTIFICATION_EMAIL in Manage Jenkins → Global properties
 //   - Abilitare lo stage DB Migration una volta implementate le TypeORM migrations
 //   - Verificare che Docker CLI sia disponibile nell'agente Jenkins
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,14 +31,24 @@ pipeline {
     agent any
 
     environment {
-        APP_REPO = 'https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git'
-        BE_IMAGE = 'zenithstore-backend'
-        FE_IMAGE = 'zenithstore-frontend'
+        APP_REPO   = "${env.APP_REPO   ?: 'https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git'}"
+        BE_IMAGE   = 'zenithstore-backend'
+        FE_IMAGE   = 'zenithstore-frontend'
         // COMMIT_SHA viene impostato dinamicamente nello stage Checkout (env.COMMIT_SHA)
         // Path del volume zenithstore-nginx-conf montato in questo container Jenkins.
         // Usato da switch-blue-green.sh e rollback.sh per aggiornare active.conf
         // senza dipendere da path host (vedi compose.monitoring.yml).
         NGINX_CONF_DIR = '/nginx-conf'
+        // ── Notifiche email ───────────────────────────────────────────────────
+        // Indirizzo destinatario delle notifiche build Jenkins.
+        // Sovrascrivere in Manage Jenkins → Configure System → Global properties.
+        NOTIFICATION_EMAIL = "${env.NOTIFICATION_EMAIL ?: 'team@zenithstore.com'}"
+        // ── Frontend build args ───────────────────────────────────────────────
+        // Valori di default per sviluppo locale. Sovrascrivere in produzione tramite
+        // Manage Jenkins → Configure System → Global properties (o variabili del job).
+        NEXT_PUBLIC_BACKEND_URL  = "${env.NEXT_PUBLIC_BACKEND_URL  ?: 'http://localhost'}"
+        NEXT_PUBLIC_WS_URL       = "${env.NEXT_PUBLIC_WS_URL       ?: 'ws://localhost'}"
+        NEXT_PUBLIC_MOCK_PAYMENT = "${env.NEXT_PUBLIC_MOCK_PAYMENT ?: 'true'}"
     }
 
     stages {
@@ -139,15 +155,15 @@ pipeline {
                         app/backend/
 
                     # Frontend — NEXT_PUBLIC_* vars sono baked nel bundle client al momento della build.
-                    # NEXT_PUBLIC_BACKEND_URL viene anche sovrascritto a runtime dal compose per il proxy server-side.
-                    # NEXT_PUBLIC_MOCK_PAYMENT=true abilita il pulsante 'Simula Pagamento' nel checkout
-                    #   (il sistema di pagamento è sempre mock; impostare a false solo in caso di integrazione reale).
+                    # I valori vengono letti dalle variabili d'ambiente Jenkins (env block qui sopra);
+                    # per ambienti diversi da localhost sovrascrivere le variabili a livello di job
+                    # o in Manage Jenkins → Configure System → Global properties.
                     docker build \
                         -t ${FE_IMAGE}:${env.COMMIT_SHA} \
                         -t ${FE_IMAGE}:latest \
-                        --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
-                        --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
-                        --build-arg NEXT_PUBLIC_MOCK_PAYMENT=true \
+                        --build-arg NEXT_PUBLIC_BACKEND_URL=${env.NEXT_PUBLIC_BACKEND_URL} \
+                        --build-arg NEXT_PUBLIC_WS_URL=${env.NEXT_PUBLIC_WS_URL} \
+                        --build-arg NEXT_PUBLIC_MOCK_PAYMENT=${env.NEXT_PUBLIC_MOCK_PAYMENT} \
                         app/frontend/
                 """
             }
@@ -189,14 +205,14 @@ pipeline {
     post {
         failure {
             mail(
-                to: 'team@zenithstore.com',
+                to: env.NOTIFICATION_EMAIL,
                 subject: "❌ FAIL: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: "Stage fallito. Vedere i log: ${env.BUILD_URL}"
             )
         }
         success {
             mail(
-                to: 'team@zenithstore.com',
+                to: env.NOTIFICATION_EMAIL,
                 subject: "✅ OK: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                 body: "Deploy completato.\nCommit: ${env.COMMIT_SHA}\nBuild: ${env.BUILD_URL}"
             )

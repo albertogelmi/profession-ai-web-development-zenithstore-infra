@@ -6,6 +6,7 @@ logs/
 *.log
 
 # Environment secrets — MAI committare secrets reali
+.env
 .env.local
 .env.secret
 *.secret

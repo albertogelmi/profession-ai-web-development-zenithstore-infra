@@ -2,63 +2,74 @@
 
 La **prima installazione** dell'ambiente deve essere eseguita manualmente.
 Questa procedura va ripetuta solo su un nuovo ambiente (es. nuovo server, nuova macchina di sviluppo):
-configura il database, compila le immagini Docker, avvia tutta la stack infrastrutturale e fa il primo deploy dello stack Blue.
+compila le immagini Docker, avvia tutta la stack infrastrutturale (inclusi i database) e fa il primo deploy dello stack Blue.
+
+> **Variabili d'ambiente:** copia `.env.example` in `.env` e sostituisci i valori placeholder
+> con i segreti reali prima di eseguire i comandi seguenti.
+> Docker Compose carica `.env` automaticamente se presente nella stessa directory.
 
 Successivamente, ad ogni push sul branch `main` della repo [zenithstore-app](https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app),
 la pipeline Jenkins partirà automaticamente e si occuperà di build, test e deploy Blue-Green senza intervento manuale.
 **Prerequisito:** il webhook GitHub deve essere configurato come descritto nella sezione [Configurazione webhook GitHub → Jenkins](#configurazione-webhook-github--jenkins).
 
 ```bash
+# 1. Clona i repository (una tantum)
+git clone https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git
+git clone https://github.com/albertogelmi/profession-ai-web-development-zenithstore-infra.git
+
+# ── REPO INFRA — configurazione iniziale ─────────────────────────────────────
+cd profession-ai-web-development-zenithstore-infra
+
+# 2. Copia il file .env e compila i segreti reali prima di proseguire
+cp .env.example .env
+# → Apri .env con un editor e sostituisci tutti i valori "change-me-..."
+
 # ── REPO APP ──────────────────────────────────────────────────────────────────
 # Eseguire i comandi seguenti dalla root della repo app (zenithstore-app)
+cd ../profession-ai-web-development-zenithstore-app
 
-# 1. Database
-# Avvia MySQL e MongoDB in background. I dati vengono inizializzati
-# dai file documentations/ddl.sql, dml.sql e mongo-init.js tramite volumi Docker.
-docker compose up -d
+# 3. Carica le variabili dall'infra .env (una volta per sessione di terminale).
+#    Questo step è necessario solo per i comandi docker build di questa sezione;
+#    i docker compose nella sezione REPO INFRA leggono .env automaticamente.
+set -a && source ../profession-ai-web-development-zenithstore-infra/.env && set +a
 
-# 2. Build immagine Backend
-# Compila il codice TypeScript e confeziona l'immagine Express.js.
-# Il tag "latest" viene usato come riferimento dal primo deploy manuale.
+# 4. Build immagine Backend
 docker build \
     -t zenithstore-backend:latest \
     ./backend/
 
-# 3. Build immagine Frontend
+# 5. Build immagine Frontend
 # Le variabili NEXT_PUBLIC_* vengono incorporate ("baked") nel bundle client
 # in fase di build; non è possibile cambiarle a runtime senza ricompilare.
-# - NEXT_PUBLIC_BACKEND_URL: URL base per le chiamate API dal browser
-# - NEXT_PUBLIC_WS_URL: URL del server WebSocket (notifiche real-time)
-# - NEXT_PUBLIC_MOCK_PAYMENT=true: abilita il pulsante "Simula Pagamento"
-#   nel checkout; impostare a false solo con un reale payment provider.
+# I valori vengono letti dall'infra .env caricato al passo 3.
 docker build \
     -t zenithstore-frontend:latest \
-    --build-arg NEXT_PUBLIC_BACKEND_URL=http://localhost \
-    --build-arg NEXT_PUBLIC_WS_URL=ws://localhost \
-    --build-arg NEXT_PUBLIC_MOCK_PAYMENT=true \
+    --build-arg NEXT_PUBLIC_BACKEND_URL="${APP_URL:-http://localhost}" \
+    --build-arg NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL:-ws://localhost}" \
+    --build-arg NEXT_PUBLIC_MOCK_PAYMENT="${NEXT_PUBLIC_MOCK_PAYMENT:-true}" \
     ./frontend/
 
 # ── REPO INFRA ────────────────────────────────────────────────────────────────
-# Eseguire i comandi seguenti dalla root della repo infra (zenithstore-infra)
+cd ../profession-ai-web-development-zenithstore-infra
 
-# 4. Build immagine Jenkins custom (una tantum)
+# 6. Build immagine Jenkins custom (una tantum)
 # Estende Jenkins LTS aggiungendo il client Docker CE, necessario per
 # eseguire docker build e docker compose all'interno della pipeline CI/CD.
 docker build -t jenkins-custom -f Dockerfile.jenkins .
 
-# 5. Crea il volume condiviso Nginx <-> Jenkins (una tantum)
+# 7. Crea il volume condiviso Nginx <-> Jenkins (una tantum)
 # Questo volume è il canale di comunicazione tra Jenkins e Nginx:
 # Jenkins vi scrive active.conf per indicare quale stack (blue/green) è attivo,
 # Nginx lo legge e instrada il traffico di conseguenza.
 docker volume create zenithstore-nginx-conf
 
-# 6. Genera i file di stato iniziali (active.conf e active_env)
+# 8. Genera i file di stato iniziali (active.conf e active_env)
 # Vanno creati manualmente prima del primo deploy,
-# impostando blue come stack di partenza (coerente con il passo 9).
+# impostando blue come stack di partenza (coerente con il passo 13).
 cp docker/nginx/conf.d/blue.conf docker/nginx/conf.d/active.conf
 echo "blue" > docker/nginx/conf.d/active_env
 
-# 7. Popola il volume condiviso Nginx <-> Jenkins con le configurazioni iniziali
+# 9. Popola il volume condiviso Nginx <-> Jenkins con le configurazioni iniziali
 # Copia blue.conf, green.conf, active.conf e active_env nel volume appena creato.
 # Senza questo step Nginx non sa a quale upstream puntare al primo avvio.
 
@@ -74,34 +85,36 @@ MSYS_NO_PATHCONV=1 docker run --rm \
     -v zenithstore-nginx-conf:/dest \
     alpine sh -c "cp /src/* /dest/"
 
-# 8. Monitoring stack
+# 10. Stack database (una tantum per un nuovo ambiente)
+# Avvia MySQL e MongoDB e crea la rete Docker condivisa zenithstore-network,
+# referenziata come external da tutti gli altri stack (blue, green, monitoring, nginx).
+# Gli script in docker/db/ vengono eseguiti una sola volta all'inizializzazione dei volumi;
+# le successive esecuzioni di "up" non re-inizializzano il DB se i volumi esistono già.
+docker compose -f docker/compose.db.yml up -d
+
+# 11. Monitoring stack
 # Avvia Jenkins, Prometheus, Grafana e Alertmanager.
 # Jenkins è raggiungibile su http://localhost:8080 (completare il wizard al primo accesso).
 # Prometheus scrape le metriche del backend ogni 15s; Grafana le espone su :3100.
 docker compose -f docker/compose.monitoring.yml up -d
 
-# 9. Nginx reverse proxy
+# 12. Nginx reverse proxy
 # Avvia Nginx sulla porta 80. Tutto il traffico esterno (browser, curl) passa da qui.
 # Nginx legge active.conf dal volume condiviso per sapere a quale stack
 # (blue su :3000/:3001, green su :3010/:3011) girare le richieste.
 docker compose -f docker/compose.nginx.yml up -d
 
-# 10. Primo deploy stack Blue
-# Imposta le variabili sensibili ed avvia i container be-blue e fe-blue.
-# IMAGE_TAG=latest usa le immagini compilate ai punti 2 e 3.
-# ATTENZIONE: in produzione sostituire i valori placeholder con segreti robusti.
-export IMAGE_TAG=latest \
-       DB_PASSWORD=rootpassword \
-       MONGO_PASSWORD=adminpassword \
-       JWT_SECRET=your-super-secret-jwt-key-change-this-in-production \
-       NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
+# 13. Primo deploy stack Blue
+# Docker Compose legge automaticamente il file .env dalla directory corrente.
+# Nessun export manuale necessario: assicurarsi che .env sia compilato prima
+# di eseguire questo comando.
 docker compose -f docker/compose.blue.yml up -d
 
-# 11. Verifica stato container
+# 14. Verifica stato container
 # Controlla che be-blue e fe-blue siano in stato "Up".
 docker ps --filter "name=be-blue" --filter "name=fe-blue"
 
-# 12. Health check applicativo
+# 15. Health check applicativo
 # Esegue una serie di curl verso le endpoint /health di backend e frontend dello stack blue,
 # con retry automatico. Restituisce exit 0 se tutto risponde, exit 1 altrimenti.
 bash scripts/healthcheck.sh blue
@@ -170,6 +183,21 @@ docker compose -f docker/compose.blue.yml logs -f
 
 # Tutti i log dello stack Green in tempo reale
 docker compose -f docker/compose.green.yml logs -f
+```
+
+## Log del DB stack
+
+Utile se MySQL o MongoDB non si avviano correttamente o i dati non vengono inizializzati.
+
+```bash
+# Log di MySQL e MongoDB in tempo reale
+docker compose -f docker/compose.db.yml logs -f
+
+# Log solo di MySQL
+docker compose -f docker/compose.db.yml logs -f mysql
+
+# Log solo di MongoDB
+docker compose -f docker/compose.db.yml logs -f mongodb
 ```
 
 ## Log del monitoring stack
@@ -241,13 +269,8 @@ ad esempio per applicare una fix a caldo, recuperare da uno stato inconsistente 
 > Per un deploy a zero downtime usa la pipeline Jenkins o lo script `switch-blue-green.sh`.
 
 ```bash
-# 1. Esporta le variabili d'ambiente necessarie a Docker Compose
-# Stessi segreti usati al primo avvio; IMAGE_TAG seleziona quale immagine montare.
-export IMAGE_TAG=latest \
-       DB_PASSWORD=rootpassword \
-       MONGO_PASSWORD=adminpassword \
-       JWT_SECRET=your-super-secret-jwt-key-change-this-in-production \
-       NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
+# 1. Verifica che il file .env sia presente e aggiornato.
+#    Docker Compose lo legge automaticamente — nessun export manuale necessario.
 
 # 2. Abbatti lo stack
 # Rimuove i container be-blue e fe-blue (i volumi dati non vengono toccati).
