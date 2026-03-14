@@ -255,3 +255,61 @@ bash scripts/healthcheck.sh blue
 
 > Se lo stack attivo è **green** (verificabile con `cat docker/nginx/conf.d/active_env`),
 > sostituisci `blue` con `green` nei comandi sopra.
+
+---
+
+# Switch Blue-Green manuale
+
+Questa procedura esegue un deploy Blue-Green **senza Jenkins**: avvia lo stack idle, verifica che risponda
+correttamente, switcha Nginx sul nuovo stack e abbatte quello vecchio dopo una finestra di rollback di 5 minuti.
+
+Usala per testare lo switch, per un deploy di emergenza o per tornare manualmente a uno stack specifico.
+
+> **Come funziona il meccanismo:** blue e green non sono ambienti fissi — si alternano ad ogni switch.
+> Lo stack *attivo* riceve tutto il traffico; lo stack *idle* è spento in attesa del deploy successivo.
+> Il file `docker/nginx/conf.d/active_env` tiene traccia di quale stack è attivo in questo momento.
+
+## Verifica stato corrente
+
+Prima di procedere, controlla quale stack è attivo:
+
+```bash
+# Mostra lo stack attualmente attivo ("blue" o "green")
+cat docker/nginx/conf.d/active_env
+
+# Mostra tutti i container in esecuzione (utile per confermare quali stack sono up)
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+```
+
+## Esegui lo switch
+
+```bash
+# 1. Esporta le variabili d'ambiente richieste dallo script
+# IMAGE_TAG=latest usa le immagini correntemente disponibili.
+# ATTENZIONE: in produzione sostituire i valori placeholder con segreti robusti.
+export IMAGE_TAG=latest \
+       DB_PASSWORD=rootpassword \
+       MONGO_PASSWORD=adminpassword \
+       JWT_SECRET=your-super-secret-jwt-key-change-this-in-production \
+       NEXTAUTH_SECRET=generate-a-random-secret-min-32-chars-for-nextauth-change-in-production
+
+# 2. Avvia lo switch
+# Lo script: avvia lo stack idle → attende 15s → health check → switcha Nginx →
+# mantiene il vecchio stack attivo per 300s (rollback window) → abbatte il vecchio stack.
+# Il terzo argomento ("production") è una label descrittiva nei log; non cambia il comportamento.
+bash scripts/switch-blue-green.sh deploy latest production
+```
+
+## Rollback durante la finestra di 5 minuti
+
+Se dopo lo switch qualcosa non va, hai **5 minuti** per tornare allo stack precedente
+(che rimane in esecuzione proprio per questo scopo):
+
+```bash
+# Ri-switcha Nginx sullo stack precedente immediatamente
+bash scripts/rollback.sh
+```
+
+> Trascorsa la rollback window, lo stack precedente viene abbattuto automaticamente
+> e il rollback non è più possibile con questo script. In quel caso usa la procedura
+> di [Riavvio manuale](#riavvio-manuale) sullo stack desiderato.
