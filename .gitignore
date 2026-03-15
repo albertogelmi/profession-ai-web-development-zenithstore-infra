@@ -24,7 +24,3 @@ Thumbs.db
 # Temporary
 *.tmp
 *.temp
-
-# Build
-docker/nginx/conf.d/active.conf
-docker/nginx/conf.d/active_env

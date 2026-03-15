@@ -1,3 +1,16 @@
+> **Compatibilità OS**
+>
+> L'intera infrastruttura è compatibile con **Linux** e **Windows**.
+> Tutti gli script (`.sh`), la pipeline Jenkins e i compose files **girano dentro container Linux**,
+> quindi sono indipendenti dall'OS host.
+>
+> L'unico vincolo riguarda i **comandi manuali che l'operatore digita sul terminale dell'host**:
+> su Windows usare **Git Bash (MINGW64)** — PowerShell nativo non è supportato
+> (`bash`, `source`, `set -a` e altri comandi shell non sono disponibili).
+> Git Bash è incluso in [Git for Windows](https://gitforwindows.org/).
+>
+> Su **Linux** non ci sono vincoli: tutti i comandi funzionano nativamente.
+
 # Avvio manuale
 
 La **prima installazione** dell'ambiente deve essere eseguita manualmente.
@@ -17,7 +30,7 @@ la pipeline Jenkins partirà automaticamente e si occuperà di build, test e dep
 git clone https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git
 git clone https://github.com/albertogelmi/profession-ai-web-development-zenithstore-infra.git
 
-# ── REPO INFRA — configurazione iniziale ─────────────────────────────────────
+# ── REPO INFRA — configurazione iniziale ──────────────────────────────────────
 cd profession-ai-web-development-zenithstore-infra
 
 # 2. Copia il file .env e compila i segreti reali prima di proseguire
@@ -63,58 +76,53 @@ docker build -t jenkins-custom -f Dockerfile.jenkins .
 # Nginx lo legge e instrada il traffico di conseguenza.
 docker volume create zenithstore-nginx-conf
 
-# 8. Genera i file di stato iniziali (active.conf e active_env)
-# Vanno creati manualmente prima del primo deploy,
-# impostando blue come stack di partenza (coerente con il passo 13).
-cp docker/nginx/conf.d/blue.conf docker/nginx/conf.d/active.conf
-echo "blue" > docker/nginx/conf.d/active_env
-
-# 9. Popola il volume condiviso Nginx <-> Jenkins con le configurazioni iniziali
-# Copia blue.conf, green.conf, active.conf e active_env nel volume appena creato.
+# 8. Popola il volume condiviso Nginx <-> Jenkins con le configurazioni iniziali
+# Copia blue.conf e green.conf nel volume e crea active.conf/active_env
+# direttamente all'interno del volume (blue come stack di partenza).
 # Senza questo step Nginx non sa a quale upstream puntare al primo avvio.
 
 # Linux / macOS:
 docker run --rm \
     -v "${PWD}/docker/nginx/conf.d:/src:ro" \
     -v zenithstore-nginx-conf:/dest \
-    alpine sh -c "cp /src/* /dest/"
+    alpine sh -c "cp /src/blue.conf /src/green.conf /dest/ && cp /src/blue.conf /dest/active.conf && echo blue > /dest/active_env"
 
 # Windows (Git Bash / MINGW64):
 MSYS_NO_PATHCONV=1 docker run --rm \
     -v "${PWD}/docker/nginx/conf.d:/src:ro" \
     -v zenithstore-nginx-conf:/dest \
-    alpine sh -c "cp /src/* /dest/"
+    alpine sh -c "cp /src/blue.conf /src/green.conf /dest/ && cp /src/blue.conf /dest/active.conf && echo blue > /dest/active_env"
 
-# 10. Stack database (una tantum per un nuovo ambiente)
+# 9. Stack database (una tantum per un nuovo ambiente)
 # Avvia MySQL e MongoDB e crea la rete Docker condivisa zenithstore-network,
 # referenziata come external da tutti gli altri stack (blue, green, monitoring, nginx).
 # Gli script in docker/db/ vengono eseguiti una sola volta all'inizializzazione dei volumi;
 # le successive esecuzioni di "up" non re-inizializzano il DB se i volumi esistono già.
 docker compose -f docker/compose.db.yml up -d
 
-# 11. Monitoring stack
+# 10. Monitoring stack
 # Avvia Jenkins, Prometheus, Grafana e Alertmanager.
 # Jenkins è raggiungibile su http://localhost:8080 (completare il wizard al primo accesso).
 # Prometheus scrape le metriche del backend ogni 15s; Grafana le espone su :3100.
 docker compose -f docker/compose.monitoring.yml up -d
 
-# 12. Nginx reverse proxy
+# 11. Nginx reverse proxy
 # Avvia Nginx sulla porta 80. Tutto il traffico esterno (browser, curl) passa da qui.
 # Nginx legge active.conf dal volume condiviso per sapere a quale stack
 # (blue su :3000/:3001, green su :3010/:3011) girare le richieste.
 docker compose -f docker/compose.nginx.yml up -d
 
-# 13. Primo deploy stack Blue
+# 12. Primo deploy stack Blue
 # Docker Compose legge automaticamente il file .env dalla directory corrente.
 # Nessun export manuale necessario: assicurarsi che .env sia compilato prima
 # di eseguire questo comando.
 docker compose -f docker/compose.blue.yml up -d
 
-# 14. Verifica stato container
+# 13. Verifica stato container
 # Controlla che be-blue e fe-blue siano in stato "Up".
 docker ps --filter "name=be-blue" --filter "name=fe-blue"
 
-# 15. Health check applicativo
+# 14. Health check applicativo
 # Esegue una serie di curl verso le endpoint /health di backend e frontend dello stack blue,
 # con retry automatico. Restituisce exit 0 se tutto risponde, exit 1 altrimenti.
 bash scripts/healthcheck.sh blue
@@ -169,7 +177,7 @@ docker logs --tail 100 be-blue
 ```
 
 > Sostituisci `be-blue` / `fe-blue` con `be-green` / `fe-green` se lo stack attivo è green
-> (verificabile con `cat docker/nginx/conf.d/active_env`).
+> (verificabile con `MSYS_NO_PATHCONV=1 docker exec nginx cat /etc/nginx/conf.d/active_env`).
 
 ## Log di tutti i container di uno stack
 
@@ -214,6 +222,112 @@ docker compose -f docker/compose.monitoring.yml logs -f jenkins
 # Log di Nginx
 docker compose -f docker/compose.nginx.yml logs -f nginx
 ```
+
+---
+
+# Configurazione iniziale Jenkins (wizard primo accesso)
+
+Questa procedura va eseguita **una sola volta** dopo il primo avvio del monitoring stack.
+Jenkins è raggiungibile su `http://localhost:8080`.
+
+## 1. Sblocca Jenkins
+
+Jenkins genera una password amministratore temporanea al primo avvio.
+Recuperala con il comando seguente e incollala nel campo "Administrator password" della pagina "Unlock Jenkins":
+
+```bash
+# Linux / macOS:
+docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+# Windows (Git Bash / MINGW64):
+MSYS_NO_PATHCONV=1 docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+Clicca **Continue**.
+
+## 2. Installa i plugin consigliati
+
+Nella pagina "Customize Jenkins" scegli **"Installa componenti aggiuntivi consigliati"**.
+Jenkins installerà il set di plugin standard (Git, Pipeline, GitHub, ecc.).
+Attendi il completamento dell'installazione (qualche minuto).
+
+## 3. Crea il primo utente amministratore
+
+Compila il form con le credenziali dell'account amministratore e clicca **"Salva e continua"**.
+
+> Conserva queste credenziali in un password manager: serviranno ad ogni accesso a Jenkins.
+
+## 4. Configura l'URL dell'istanza
+
+Lascia il valore proposto (`http://localhost:8080/`) invariato e clicca **"Salva e termina"**.
+
+> Questo URL viene usato da Jenkins per costruire i link nelle notifiche e nei webhook.
+> Se in futuro esponi Jenkins pubblicamente (es. tramite ngrok), aggiornalo da
+> **Manage Jenkins → System → Jenkins URL**.
+
+Clicca **"Inizia a usare Jenkins"**: il wizard è completato.
+
+---
+
+# Configurazione pipeline Jenkins (una tantum)
+
+## 1. Aggiungi le credenziali (Secrets)
+
+Vai su **Gestisci Jenkins → Credenziali → System → Credenziali globali → Add Credentials**.
+Seleziona il tipo **Secret text**, lascia Scope su **Globale** e crea le seguenti 5 credenziali:
+
+| ID | Secret | Descrizione |
+|---|---|---|
+| `jwt-secret` | valore `JWT_SECRET` dal `.env` | `JWT Secret condiviso BE/FE` |
+| `db-password` | valore `MYSQL_ROOT_PASSWORD` dal `.env` | `MySQL root password` |
+| `mongo-password` | valore `MONGO_PASSWORD` dal `.env` | `MongoDB admin password` |
+| `nextauth-secret` | valore `NEXTAUTH_SECRET` dal `.env` | `NextAuth.js secret` |
+
+> L'**ID** deve corrispondere esattamente ai valori nella tabella:
+> è quello che il `Jenkinsfile` usa per recuperare i segreti a runtime.
+
+> La password SMTP per le notifiche email di Jenkins **non va configurata qui**:
+> si imposta in **Gestisci Jenkins → System → E-mail Notification** (sezione dedicata).
+
+## 2. Configura le variabili globali
+
+Vai su **Gestisci Jenkins → System**, scorri fino a **Proprietà globali**, spunta **"Variabili d'ambiente"**
+e aggiungi le seguenti variabili:
+
+| Nome | Valore |
+|---|---|
+| `APP_REPO` | `https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git` |
+| `NOTIFICATION_EMAIL` | il tuo indirizzo email |
+
+Clicca **"Salva"**.
+
+## 3. Crea il job Pipeline
+
+1. Vai su **Dashboard → Nuovo elemento**
+2. Inserisci il nome `zenithstore`, seleziona **Pipeline** e clicca **OK**
+3. Scorri fino alla sezione **Pipeline** in fondo alla pagina e imposta:
+
+   | Campo | Valore |
+   |---|---|
+   | **Definition** | `Pipeline script from SCM` |
+   | **SCM** | `Git` |
+   | **URL di Deposito** | `https://github.com/albertogelmi/profession-ai-web-development-zenithstore-infra.git` |
+   | **Credenziali** | Nessuna (repo pubblica) |
+   | **Ramo** | `*/main` |
+   | **Script Path** | `Jenkinsfile` (default) |
+
+4. Clicca **"Salva"**
+
+## 4. Prima esecuzione manuale
+
+1. Vai su **Dashboard → zenithstore → Esegui adesso**
+2. Attendi il completamento (~5-10 minuti) e verifica che tutte le stage siano verdi:
+   **Checkout → Build → Test → Docker Build → Deploy**
+3. Controlla quale stack è diventato attivo:
+   ```bash
+   MSYS_NO_PATHCONV=1 docker exec nginx cat /etc/nginx/conf.d/active_env
+   ```
+4. Apri **`http://localhost`** nel browser e verifica che l'applicazione risponda
 
 ---
 
@@ -287,5 +401,5 @@ docker ps --filter "name=be-blue" --filter "name=fe-blue"
 bash scripts/healthcheck.sh blue
 ```
 
-> Se lo stack attivo è **green** (verificabile con `cat docker/nginx/conf.d/active_env`),
+> Se lo stack attivo è **green** (verificabile con `MSYS_NO_PATHCONV=1 docker exec nginx cat /etc/nginx/conf.d/active_env`),
 > sostituisci `blue` con `green` nei comandi sopra.
