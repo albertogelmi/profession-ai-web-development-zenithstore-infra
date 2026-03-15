@@ -67,7 +67,7 @@ if [ "$ACTION" = "deploy" ]; then
 
     # 1. Rimuovi eventuale stack idle rimasto da un deploy precedente fallito
     echo "🧹 Cleanup stack idle ($IDLE) eventualmente già in esecuzione..."
-    docker compose -f "${COMPOSE_DIR}/${IDLE_COMPOSE}" down --remove-orphans 2>/dev/null || true
+    docker compose -f "${COMPOSE_DIR}/${IDLE_COMPOSE}" down 2>/dev/null || true
 
     # 2. Avvia stack idle con le nuove immagini
     echo "🚀 Avvio stack $IDLE (IMAGE_TAG=$IMAGE_TAG)..."
