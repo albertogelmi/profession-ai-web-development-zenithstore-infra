@@ -16,9 +16,16 @@
 //
 // Jenkins Global properties richieste (Manage Jenkins → Configure System → Global properties):
 //   APP_REPO               — URL del repository app (es. https://github.com/org/zenithstore-app.git)
-//   NOTIFICATION_EMAIL     — Indirizzo email per notifiche build (es. team@zenithstore.com)
-//   NEXT_PUBLIC_BACKEND_URL — URL pubblico del backend (es. https://zenithstore.com)
-//   NEXT_PUBLIC_WS_URL      — URL WebSocket pubblico    (es. wss://zenithstore.com)
+//
+// Variabili lette dal file .env (o Jenkins Global properties):
+//   BRANCH               — Branch da buildare. Determina l'ambiente di deploy:
+//                              main               → develop    (automatico)
+//                              release_candidate  → staging    (automatico)
+//                              release            → production (approval manuale)
+//                            Default: main
+//   NOTIFICATION_EMAIL     — Indirizzo email per notifiche build
+//   NEXT_PUBLIC_BACKEND_URL — URL pubblico del backend
+//   NEXT_PUBLIC_WS_URL      — URL WebSocket pubblico
 //   NEXT_PUBLIC_MOCK_PAYMENT — "true" o "false"         (default: "true")
 //
 // ⚠️  REMINDER — DA RIVEDERE PRIMA DELLA PRIMA ESECUZIONE:
@@ -32,6 +39,7 @@ pipeline {
 
     environment {
         APP_REPO   = "${env.APP_REPO   ?: 'https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git'}"
+        BRANCH     = "${env.BRANCH    ?: 'main'}"
         BE_IMAGE   = 'zenithstore-backend'
         FE_IMAGE   = 'zenithstore-frontend'
         // COMMIT_SHA viene impostato dinamicamente nello stage Checkout (env.COMMIT_SHA)
@@ -59,14 +67,17 @@ pipeline {
                 // Il repo infra è già presente nel workspace (checkout Jenkins SCM).
                 // Qui si fa il checkout del repo app in una subdir dedicata.
                 dir('app') {
-                    git url: env.APP_REPO, branch: 'main'
+                    git url: env.APP_REPO, branch: env.BRANCH
                 }
                 script {
                     env.COMMIT_SHA = sh(
                         script: 'git -C app rev-parse --short HEAD',
                         returnStdout: true
                     ).trim()
-                    echo "Commit SHA: ${env.COMMIT_SHA}"
+                    env.DEPLOY_ENV = (env.BRANCH == 'release')           ? 'production'
+                                   : (env.BRANCH == 'release_candidate') ? 'staging'
+                                   : 'develop'
+                    echo "Branch: ${env.BRANCH} → Deploy target: ${env.DEPLOY_ENV} | Commit: ${env.COMMIT_SHA}"
                 }
             }
         }
@@ -169,34 +180,24 @@ pipeline {
             }
         }
 
-        // ── 5. DEPLOY STAGING (automatico) ───────────────────────────────────
-        stage('Deploy Staging') {
+        // ── 5. DEPLOY ─────────────────────────────────────────────────────────
+        // L'ambiente di destinazione è derivato dal branch (see Checkout):
+        //   main    → staging    (automatico)
+        //   release → production (richiede approval manuale)
+        stage('Deploy') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'jwt-secret',      variable: 'JWT_SECRET'),
-                    string(credentialsId: 'db-password',     variable: 'DB_PASSWORD'),
-                    string(credentialsId: 'mongo-password',  variable: 'MONGO_PASSWORD'),
-                    string(credentialsId: 'nextauth-secret', variable: 'NEXTAUTH_SECRET'),
-                ]) {
-                    sh "bash scripts/switch-blue-green.sh deploy ${env.COMMIT_SHA} staging"
+                script {
+                    if (env.DEPLOY_ENV == 'production') {
+                        input message: "Deploy in produzione? (branch: ${env.BRANCH})", ok: 'Approva Deploy'
+                    }
                 }
-            }
-        }
-
-        // ── 6. DEPLOY PRODUCTION (manuale — approval gate) ───────────────────
-        stage('Deploy Production') {
-            input {
-                message 'Deploy in produzione?'
-                ok 'Approva Deploy'
-            }
-            steps {
                 withCredentials([
                     string(credentialsId: 'jwt-secret',      variable: 'JWT_SECRET'),
                     string(credentialsId: 'db-password',     variable: 'DB_PASSWORD'),
                     string(credentialsId: 'mongo-password',  variable: 'MONGO_PASSWORD'),
                     string(credentialsId: 'nextauth-secret', variable: 'NEXTAUTH_SECRET'),
                 ]) {
-                    sh "bash scripts/switch-blue-green.sh deploy ${env.COMMIT_SHA} production"
+                    sh "bash scripts/switch-blue-green.sh deploy ${env.COMMIT_SHA} ${env.DEPLOY_ENV}"
                 }
             }
         }
