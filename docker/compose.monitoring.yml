@@ -17,6 +17,8 @@ services:
   jenkins:
     image: jenkins-custom    # build con: docker build -t jenkins-custom -f Dockerfile.jenkins .
     container_name: jenkins
+    # Su Windows con Docker Desktop il named pipe è accessibile solo a root dentro il container.
+    user: root
     ports:
       - "8080:8080"
       - "50000:50000"   # JNLP agent port
@@ -27,11 +29,14 @@ services:
       NGINX_CONF_DIR: /nginx-conf
     volumes:
       - jenkins_home:/var/jenkins_home
-      # Monta il Docker named pipe di Windows per consentire docker commands dall'interno
-      - //./pipe/docker_engine://./pipe/docker_engine
+      # Monta il Docker socket Unix standard. Docker Desktop (WSL2 backend) lo espone
+      # ai container anche su Windows, consentendo docker commands dall'interno del container.
+      - /var/run/docker.sock:/var/run/docker.sock
       # Volume condiviso con Nginx: Jenkins scrive in /nginx-conf/active.conf,
       # Nginx lo legge da /etc/nginx/conf.d/active.conf (stesso volume)
       - zenithstore-nginx-conf:/nginx-conf
+    networks:
+      - zenithstore-network   # per raggiungere be-blue/be-green/fe-blue/fe-green durante l'health check
     restart: unless-stopped
 
   prometheus:

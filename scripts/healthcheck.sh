@@ -28,6 +28,23 @@ else
     exit 1
 fi
 
+# ── Determina il target host ──────────────────────────────────────────────────
+# Quando lo script gira dentro il container Jenkins, 'localhost' è il container
+# stesso — i container blue/green non sono raggiungibili sulle porte host.
+# In quel caso si usa il nome container sulla Docker network (porta interna 3000/3001).
+# Quando gira direttamente sull'host si usano le porte host (localhost:300x).
+if [ -f /.dockerenv ]; then
+    # Siamo dentro un container: usa nome container + porta interna
+    BE_HOST="be-${STACK}"
+    FE_HOST="fe-${STACK}"
+    BE_PORT=3000
+    FE_PORT=3001
+else
+    # Siamo sull'host: usa localhost + porta host
+    BE_HOST="localhost"
+    FE_HOST="localhost"
+fi
+
 # ── Helper: controlla un endpoint con retry ───────────────────────────────────
 check_endpoint() {
     local URL="$1"
@@ -53,8 +70,8 @@ check_endpoint() {
 # ── Esegui checks ─────────────────────────────────────────────────────────────
 FAILED=0
 
-check_endpoint "http://localhost:${BE_PORT}/health"     "Backend  ($STACK)" || FAILED=1
-check_endpoint "http://localhost:${FE_PORT}/api/health" "Frontend ($STACK)" || FAILED=1
+check_endpoint "http://${BE_HOST}:${BE_PORT}/health"     "Backend  ($STACK)" || FAILED=1
+check_endpoint "http://${FE_HOST}:${FE_PORT}/api/health" "Frontend ($STACK)" || FAILED=1
 
 if [ "$FAILED" -eq 1 ]; then
     echo "❌ Health check fallito per stack $STACK"
