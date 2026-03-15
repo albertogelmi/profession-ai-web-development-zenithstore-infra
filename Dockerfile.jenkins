@@ -28,5 +28,11 @@ RUN apt-get update \
  && apt-get install -y docker-ce-cli docker-compose-plugin \
  && rm -rf /var/lib/apt/lists/*
 
+# Installa Node.js 20 LTS (necessario per npm ci/build/test negli stage Build e Test)
+# Il frontend richiede Node 20; il backend Node 18 — Node 20 è compatibile con entrambi.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
 # Torna all'utente jenkins per sicurezza
 USER jenkins
