@@ -207,18 +207,30 @@ pipeline {
 
     post {
         failure {
-            mail(
-                to: env.NOTIFICATION_EMAIL,
-                subject: "❌ FAIL: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Stage fallito. Vedere i log: ${env.BUILD_URL}"
-            )
+            script {
+                try {
+                    mail(
+                        to: env.NOTIFICATION_EMAIL,
+                        subject: "❌ FAIL: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: "Stage fallito. Vedere i log: ${env.BUILD_URL}"
+                    )
+                } catch (e) {
+                    echo "⚠️ Notifica email non inviata (SMTP non configurato): ${e.message}"
+                }
+            }
         }
         success {
-            mail(
-                to: env.NOTIFICATION_EMAIL,
-                subject: "✅ OK: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Deploy completato.\nCommit: ${env.COMMIT_SHA}\nBuild: ${env.BUILD_URL}"
-            )
+            script {
+                try {
+                    mail(
+                        to: env.NOTIFICATION_EMAIL,
+                        subject: "✅ OK: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: "Deploy completato.\nCommit: ${env.COMMIT_SHA}\nBuild: ${env.BUILD_URL}"
+                    )
+                } catch (e) {
+                    echo "⚠️ Notifica email non inviata (SMTP non configurato): ${e.message}"
+                }
+            }
         }
     }
 }
