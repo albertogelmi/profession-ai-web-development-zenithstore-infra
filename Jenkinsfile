@@ -1,38 +1,39 @@
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
 // ZenithStore — Pipeline CI/CD
-// ─────────────────────────────────────────────────────────────────────────────
-// Struttura workspace Jenkins:
-//   /                    ← infra repo (questa Repo, già checkout da Jenkins SCM)
-//   /app/                ← app repo  (checkout dallo stage 'Checkout App')
-//   /scripts/            ← script deploy
-//   /docker/             ← compose files e configurazioni
+// =============================================================================
 //
-// Jenkins Credentials richieste (Manage Jenkins → Credentials):
-//   jwt-secret       — JWT_SECRET condiviso tra BE e FE
-//   db-password      — MySQL root password
-//   mongo-password   — MongoDB admin password
-//   nextauth-secret  — NEXTAUTH_SECRET per NextAuth.js
-//   email-password   — Password SMTP per le notifiche Jenkins
+// STRUTTURA WORKSPACE
+//   /           ← repo infra  (checkout Jenkins SCM)
+//   /app/       ← repo app    (checkout stage 'Checkout App')
+//   /scripts/   ← script deploy
+//   /docker/    ← compose files e configurazioni
 //
-// Jenkins Global properties richieste (Manage Jenkins → Configure System → Global properties):
-//   APP_REPO               — URL del repository app (es. https://github.com/org/zenithstore-app.git)
+// CREDENTIALS  (Gestisci Jenkins → Credenziali → Credenziali globali)
+//   jwt-secret       Secret text  JWT_SECRET condiviso tra BE e FE
+//   db-password      Secret text  MySQL root password
+//   mongo-password   Secret text  MongoDB admin password
+//   nextauth-secret  Secret text  NEXTAUTH_SECRET per NextAuth.js
 //
-// Variabili lette dal file .env (o Jenkins Global properties):
-//   BRANCH               — Branch da buildare. Determina l'ambiente di deploy:
-//                              main               → develop    (automatico)
-//                              release_candidate  → staging    (automatico)
-//                              release            → production (approval manuale)
-//                            Default: main
-//   NOTIFICATION_EMAIL     — Indirizzo email per notifiche build
-//   NEXT_PUBLIC_BACKEND_URL — URL pubblico del backend
-//   NEXT_PUBLIC_WS_URL      — URL WebSocket pubblico
-//   NEXT_PUBLIC_MOCK_PAYMENT — "true" o "false"         (default: "true")
+// GLOBAL PROPERTIES  (Gestisci Jenkins → System → Global properties)
+//   APP_REPO            URL del repository app
+//                       default: https://github.com/albertogelmi/profession-ai-web-development-zenithstore-app.git
+//   NOTIFICATION_EMAIL  Indirizzo email per notifiche build
+//                       default: team@zenithstore.com
 //
-// ⚠️  REMINDER — DA RIVEDERE PRIMA DELLA PRIMA ESECUZIONE:
-//   - Impostare APP_REPO e NOTIFICATION_EMAIL in Manage Jenkins → Global properties
-//   - Abilitare lo stage DB Migration una volta implementate le TypeORM migrations
-//   - Verificare che Docker CLI sia disponibile nell'agente Jenkins
-// ─────────────────────────────────────────────────────────────────────────────
+// VARIABILI OPZIONALI  (Global properties o variabili del job)
+//   BRANCH                   Branch da buildare (default: main)
+//                              main               → deploy su develop    (automatico)
+//                              release_candidate  → deploy su staging    (automatico)
+//                              release            → deploy su production (approval manuale)
+//   NEXT_PUBLIC_BACKEND_URL  URL pubblico del backend  (default: http://localhost)
+//   NEXT_PUBLIC_WS_URL       URL WebSocket pubblico    (default: ws://localhost)
+//   NEXT_PUBLIC_MOCK_PAYMENT "true" o "false"          (default: "true")
+//
+// ⚠️  CHECKLIST PRIMA DELLA PRIMA ESECUZIONE
+//   [ ] Aggiungere le 4 Credentials elencate sopra
+//   [ ] Impostare APP_REPO e NOTIFICATION_EMAIL in Global properties
+//   [ ] Abilitare lo stage DB Migration quando le TypeORM migrations sono pronte
+// =============================================================================
 
 pipeline {
     agent any
@@ -181,9 +182,10 @@ pipeline {
         }
 
         // ── 5. DEPLOY ─────────────────────────────────────────────────────────
-        // L'ambiente di destinazione è derivato dal branch (see Checkout):
-        //   main    → staging    (automatico)
-        //   release → production (richiede approval manuale)
+        // L'ambiente di destinazione è derivato dal branch (vedi stage Checkout):
+        //   main               → develop    (automatico)
+        //   release_candidate  → staging    (automatico)
+        //   release            → production (richiede approval manuale)
         stage('Deploy') {
             steps {
                 script {
