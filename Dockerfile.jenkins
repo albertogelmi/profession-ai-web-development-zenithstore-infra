@@ -1,0 +1,44 @@
+# Dockerfile.jenkins
+# Immagine Jenkins LTS con Docker CLI installato.
+# L'immagine stock jenkins/jenkins:lts NON include docker/docker-compose:
+# questo Dockerfile aggiunge Docker CE client e il plugin Docker Compose.
+#
+# Build:   docker build -t jenkins-custom -f Dockerfile.jenkins .
+# Run:     docker run -d --name jenkins \
+#            -p 8080:8080 \
+#            -v jenkins_home:/var/jenkins_home \
+#            -v //./pipe/docker_engine://./pipe/docker_engine \
+#            jenkins-custom
+
+FROM jenkins/jenkins:lts
+
+USER root
+
+# Installa Docker CE client + Docker Compose plugin
+RUN apt-get update \
+ && apt-get install -y ca-certificates curl gnupg lsb-release \
+ && curl -fsSL https://download.docker.com/linux/debian/gpg \
+      | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+      https://download.docker.com/linux/debian \
+      $(lsb_release -cs) stable" \
+      | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+ && apt-get update \
+ && apt-get install -y docker-ce-cli docker-compose-plugin \
+ && rm -rf /var/lib/apt/lists/*
+
+# Installa Node.js 20 LTS (necessario per npm ci/build/test negli stage Build e Test)
+# Il frontend richiede Node 20; il backend Node 18 — Node 20 è compatibile con entrambi.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+# Git >= 2.35 rifiuta di operare in directory di proprietà di un utente diverso.
+# Quando il container gira come root (user: root nel compose) ma il workspace
+# era stato creato dall'utente jenkins, git restituisce "fatal: not in a git directory".
+# Questa configurazione globale disabilita il controllo per tutte le directory.
+RUN git config --global --add safe.directory '*'
+
+# Torna all'utente jenkins per sicurezza
+USER jenkins

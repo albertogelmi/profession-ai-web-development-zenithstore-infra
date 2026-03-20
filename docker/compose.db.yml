@@ -1,0 +1,82 @@
+# compose.db.yml — Stack database (MySQL + MongoDB)
+# Gestisce i database dell'applicazione e crea la rete condivisa zenithstore-network.
+# Deve essere avviato PRIMA di tutti gli altri stack (blue, green, monitoring).
+#
+# Avvio:  DB_PASSWORD=... MONGO_PASSWORD=... docker compose -f docker/compose.db.yml up -d
+# Stop:   docker compose -f docker/compose.db.yml down
+#         (aggiungere -v per eliminare anche i volumi dati — ATTENZIONE: distrugge i dati)
+#
+# Variabili richieste (senza default — devono essere impostate esplicitamente):
+#   DB_PASSWORD       password root di MySQL (usata anche da be-blue/be-green)
+#   MONGO_PASSWORD    password admin di MongoDB (usata anche da be-blue/be-green)
+#
+# Variabili opzionali (con default):
+#   DB_DATABASE       nome del database MySQL         (default: zenithstore)
+#   MONGO_DATABASE    nome del database MongoDB       (default: zenithstore)
+#   MONGO_USERNAME    username admin di MongoDB       (default: admin)
+
+version: '3.8'
+
+services:
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql-zenithstore
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE:-zenithstore}
+    ports:
+      - "3306:3306"   # esposta per accesso diretto da tool esterni (es. DBeaver); non usata dai BE
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/01-ddl.sql:/docker-entrypoint-initdb.d/01-ddl.sql:ro
+      - ./db/02-dml.sql:/docker-entrypoint-initdb.d/02-dml.sql:ro
+    healthcheck:
+      # $$MYSQL_ROOT_PASSWORD: doppio $ per passare la variabile alla shell del container
+      # e non farla espandere da Docker Compose a build time.
+      test: ["CMD", "sh", "-c", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - zenithstore-network
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb-zenithstore
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-zenithstore}
+    ports:
+      - "27018:27017"   # porta host 27018 per evitare conflitti con MongoDB locali
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - zenithstore-network
+
+networks:
+  zenithstore-network:
+    # Rete condivisa tra tutti gli stack (db, blue, green, monitoring, nginx).
+    # Creata qui, referenziata come external negli altri compose file.
+    name: zenithstore-network
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local

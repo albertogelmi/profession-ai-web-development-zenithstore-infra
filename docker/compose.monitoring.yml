@@ -1,0 +1,102 @@
+# compose.monitoring.yml — Stack di monitoring
+# Avvia: Prometheus, Grafana, Alertmanager, Jenkins
+#
+# Avvio:  docker compose -f docker/compose.monitoring.yml up -d
+# Stop:   docker compose -f docker/compose.monitoring.yml down
+#
+# Accesso:
+#   Jenkins    http://localhost:8080
+#   Prometheus http://localhost:9090
+#   Grafana    http://localhost:3100  (admin / GRAFANA_PASSWORD)
+#   Alertmgr   http://localhost:9093
+
+version: '3.8'
+
+services:
+
+  jenkins:
+    image: jenkins-custom    # build con: docker build -t jenkins-custom -f Dockerfile.jenkins .
+    container_name: jenkins
+    # Su Windows con Docker Desktop il named pipe è accessibile solo a root dentro il container.
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"   # JNLP agent port
+    environment:
+      # Path del volume nginx-conf montato in questo container.
+      # Usato da switch-blue-green.sh e rollback.sh per aggiornare active.conf
+      # senza dipendere da path host.
+      NGINX_CONF_DIR: /nginx-conf
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # Monta il Docker socket Unix standard. Docker Desktop (WSL2 backend) lo espone
+      # ai container anche su Windows, consentendo docker commands dall'interno del container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Volume condiviso con Nginx: Jenkins scrive in /nginx-conf/active.conf,
+      # Nginx lo legge da /etc/nginx/conf.d/active.conf (stesso volume)
+      - zenithstore-nginx-conf:/nginx-conf
+    networks:
+      - zenithstore-network   # per raggiungere be-blue/be-green/fe-blue/fe-green durante l'health check
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring-network
+      - zenithstore-network   # per raggiungere be-blue e be-green
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3100:3000"   # host 3100 → container 3000 (3000 è occupata dal BE)
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    networks:
+      - monitoring-network
+    restart: unless-stopped
+
+networks:
+  monitoring-network:
+    name: zenithstore-monitoring
+  zenithstore-network:
+    external: true
+    name: zenithstore-network
+
+volumes:
+  jenkins_home:
+  prometheus_data:
+  grafana_data:
+  zenithstore-nginx-conf:
+    external: true
+    name: zenithstore-nginx-conf

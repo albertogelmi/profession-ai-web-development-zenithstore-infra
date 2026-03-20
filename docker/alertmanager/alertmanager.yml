@@ -1,0 +1,54 @@
+# alertmanager.yml — Configurazione Alertmanager
+#
+# Default: receiver "null" — gli alert sono visibili nell'UI su :9093
+# ma non viene inviata alcuna email.
+#
+# Per abilitare le notifiche email:
+#   1. Decommentare il blocco "global" con i parametri SMTP
+#   2. Sostituire i valori placeholder con quelli reali
+#   3. Cambiare il receiver di default da 'null' a 'team-email'
+#   4. Decommentare il receiver 'team-email' nella sezione receivers
+#   5. Riavviare il container:
+#      docker compose -f docker/compose.monitoring.yml restart alertmanager
+
+global:
+  resolve_timeout: 5m
+  # ── SMTP (decommentare e compilare per abilitare le email) ──────────────────
+  # smtp_smarthost:     'smtp.gmail.com:587'      # es. smtp.gmail.com:587
+  # smtp_from:          'alerts@zenithstore.com'
+  # smtp_auth_username: 'alerts@zenithstore.com'
+  # smtp_auth_password: 'your-smtp-password'      # App Password se usi Gmail
+  # smtp_require_tls:   true
+
+route:
+  group_by: ['alertname', 'severity', 'job']
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 12h
+  receiver: 'null'
+
+  # Route separata per i critical: nessuna attesa, immediato
+  routes:
+    - match:
+        severity: critical
+      group_wait: 0s
+      receiver: 'null'    # sostituire con 'team-email' dopo aver configurato SMTP
+
+receivers:
+  - name: 'null'    # receiver silenzioso: gli alert sono visibili nell'UI ma non inviati
+
+  # ── Email receiver (decommentare dopo aver configurato il blocco global SMTP) ─
+  # - name: 'team-email'
+  #   email_configs:
+  #     - to: 'team@zenithstore.com'
+  #       send_resolved: true
+  #       headers:
+  #         Subject: '[ZenithStore {{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+
+inhibit_rules:
+  # Sopprime i warning se c'è già un critical per lo stesso alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'job']
